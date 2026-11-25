@@ -484,6 +484,63 @@ async def text_embedding(request: Request):
 
     return JSONResponse(content=results)
 
+
+# -------------------------------
+# HTTP-triggered fabric-data-agent-query (hybrid extension)
+# -------------------------------
+@app.post("/fabric-data-agent-query", dependencies=[Depends(validate_api_key_header)])
+async def fabric_data_agent_query(request: Request):
+    start_time = time.time()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        logging.error(f"[fabric_data_agent_query] Invalid JSON: {e}")
+        return Response(f"Invalid JSON: {e}", status_code=400)
+
+    question = (body or {}).get("question", "")
+    if not isinstance(question, str) or not question.strip():
+        return Response("Invalid body. Field 'question' is required.", status_code=400)
+
+    auth_header = request.headers.get("Authorization", "")
+    user_token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+
+    require_user_identity = (
+        app_config_client.get("FABRIC_REQUIRE_USER_IDENTITY", "true").lower() in ("true", "1", "yes")
+    )
+    if require_user_identity and not user_token:
+        return Response(
+            "Missing user bearer token. Provide Authorization: Bearer <token> for Fabric identity passthrough scenarios.",
+            status_code=401,
+        )
+
+    try:
+        from tools import FabricFoundryDataAgentClient
+
+        fabric_client = FabricFoundryDataAgentClient()
+        result = await asyncio.to_thread(fabric_client.ask, question, user_token)
+    except Exception as e:
+        logging.error(f"[fabric_data_agent_query] Error invoking Fabric Data Agent: {e}", exc_info=True)
+        return Response(f"Error invoking Fabric Data Agent: {e}", status_code=500)
+
+    elapsed = time.time() - start_time
+    logging.info(f"[fabric_data_agent_query] Finished in {elapsed:.2f} seconds.")
+
+    return JSONResponse(
+        content={
+            "question": question,
+            "answer": result.get("answer"),
+            "agent": {
+                "name": result.get("agentName"),
+                "version": result.get("agentVersion"),
+                "toolChoiceForced": result.get("toolChoiceForced"),
+            },
+            "identity": {
+                "requireUserIdentity": require_user_identity,
+                "tokenProvided": bool(user_token),
+            },
+        }
+    )
+
 HTTPXClientInstrumentor().instrument()
 FastAPIInstrumentor.instrument_app(app)
 

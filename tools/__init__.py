@@ -21,6 +21,7 @@ __all__ = [
 	"DocumentIntelligenceClient",
 	"SharePointMetadataStreamer",
 	"CosmosDBClient",
+	"FabricFoundryDataAgentClient",
 ]
 
 
@@ -65,6 +66,11 @@ def __getattr__(name: str) -> Any:  # PEP 562 lazy attribute access
 	if name == "CosmosDBClient":
 		from .cosmosdb import CosmosDBClient as _CosmosDBClient
 		return _CosmosDBClient
+	if name == "FabricFoundryDataAgentClient":
+		from .fabric_foundry_agent import (
+			FabricFoundryDataAgentClient as _FabricFoundryDataAgentClient,
+		)
+		return _FabricFoundryDataAgentClient
 	raise AttributeError(name)
 
 
